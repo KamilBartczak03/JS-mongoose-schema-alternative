@@ -1,31 +1,60 @@
-import { Schema, $required, $type, $int } from "./module.js"
+function getType(value) {
+  let type = Object.prototype.toString.call(value)
+  type = type.slice(8, Infinity)
+  return type.slice(0, type.length - 1)
+}
 
-const ProductSchema = new Schema({
-    price: {
-        required: $required(true, "field is required"),
-        type: $type("number", "Price have to be numer"),
-    },
-    discount: {
-        required: $required(true, "Price is required"),
-        schema: new Schema({
-            first: {
-                type: $type("number", "fist have to be number"),
-                required: $required(true, "field is required"),
-                int: $int(true, "First have to be int")
-            },
-            last: {
-                type: $type("string", "last have to be string"),
-                required: $required(true, "field is required")
-            }
-        })
+export function $required(boolean, message) {
+  return {
+    value: boolean,
+    error: message,
+    handler(currentKey) {
+      if (this.value === false) return
+      if (currentKey === null || currentKey === undefined || currentKey === "") throw this.error
     }
-}, "products")
+  }
+}
 
-ProductSchema.validate({
-    price: 0,
-    discount: {
-        first: 1,
-        last: "a"
+export function $type(type, message) {
+  return {
+    value: type,
+    error: message,
+    handler(currentKey) {
+      if (getType(currentKey) !== this.value) throw this.error
     }
-})
-.catch(err => console.log(err))
+  }
+}
+
+export function $int(boolean, message) {
+  return {
+    value: boolean,
+    error: message,
+    handler(currentKey) {
+      if (this.value && currentKey % 1 !== 0) throw this.error
+    }
+  }
+}
+
+export class Schema {
+  constructor(schema, collection_name) {
+    this.schema = schema
+  }
+
+  async validate(payload) {
+    for (const key in this.schema) {
+      let errorMessage = null
+      const currentSchema = this.schema[key]
+      const currentKey = payload[key]
+
+      if (currentSchema.required) currentSchema.required.handler(currentKey, currentSchema)
+        if (currentKey !== null && currentKey !== undefined && currentKey !== ""){
+        if (currentSchema.type) currentSchema.type.handler(currentKey, currentSchema)
+        if (currentSchema.schema) await currentSchema.schema.validate(currentKey).catch(error => errorMessage = error)
+        if (currentSchema.int) currentSchema.int.handler(currentKey, currentSchema)
+        if (currentSchema.validator) await currentSchema.validator(currentKey).catch(error => errorMessage = error)
+      }
+      
+      if (errorMessage) throw errorMessage
+    }
+  }
+}
